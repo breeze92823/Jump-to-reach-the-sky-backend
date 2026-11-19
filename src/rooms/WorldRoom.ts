@@ -1,8 +1,9 @@
 import { Room, Client, CloseCode } from "colyseus";
 import { WorldState, PlayerState } from "./schema/WorldState.js";
-import { GUEST_ID_PREFIX, LEADERBOARD_EVERY_MS, NAME_MAX, PFP_MAX_LEN, RECONNECT_SECONDS, ROOM_MAX_CLIENTS } from "../constants.js";
+import { GUEST_ID_PREFIX, LEADERBOARD_EVERY_MS, LOOK_MIN_INTERVAL_MS, NAME_MAX, POSE_MIN_INTERVAL_MS, PFP_MAX_LEN, RECONNECT_SECONDS, ROOM_MAX_CLIENTS } from "../constants.js";
 import { getPlayers, type PlayerDoc } from "../db.js";
 import { sanitizeProgress } from "../sanitize.js";
+import { RateGate, sanitizeLook, sanitizePose } from "../presence.js";
 import { claimDaily, dailyFields, dailyView, readDaily, rollStreak, type DailyState } from "../daily.js";
 import { ranksOf, topBoards } from "../leaderboard.js";
 import { resolveIdentity, type Identity } from "../auth.js";
@@ -43,6 +44,10 @@ export class WorldRoom extends Room<{ state: WorldState }> {
   // sessionId -> Daily Rewards state (daily.ts), read with the save. Guests and serverless sessions
   // keep theirs here only (like the rest of their progress, it lasts the session).
   private dailies = new Map<string, DailyState>();
+
+  // sessionId -> rate limits of the presence messages (presence.ts).
+  private poseGates = new Map<string, RateGate>();
+  private lookGates = new Map<string, RateGate>();
 
   messages = {
     // Debounced push of the client's whole progress. Upserts, so a first save creates the document.
@@ -93,6 +98,36 @@ export class WorldRoom extends Room<{ state: WorldState }> {
         return client.send("dailyResult", { ok: false, reason: "save", ...dailyView(s) });
       }
       client.send("dailyResult", { ok: true, count, reset, ...dailyView(s) });
+    },
+    // Where the player is and what its body is doing, ~10/s (presence.ts). Bounded, rate-limited,
+    // then relayed through the roster so everyone else can draw it.
+    pose: (client: Client, msg: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      const gate = this.poseGates.get(client.sessionId);
+      if (!p || !gate?.accept(Date.now())) return;
+      const pose = sanitizePose(msg);
+      if (!pose) return;
+      p.x = pose.x;
+      p.y = pose.y;
+      p.z = pose.z;
+      p.yaw = pose.yaw;
+      p.speed = pose.speed;
+      p.grounded = pose.grounded;
+      p.carrying = pose.carrying;
+      p.posed = true;
+    },
+    // What the player looks like and has on show (back item, outfit key, carried stack, base
+    // pedestals), sent when it changes.
+    look: (client: Client, msg: unknown) => {
+      const p = this.state.players.get(client.sessionId);
+      const gate = this.lookGates.get(client.sessionId);
+      if (!p || !gate?.accept(Date.now())) return;
+      const look = sanitizeLook(msg);
+      p.item = look.item;
+      p.outfit = look.outfit;
+      p.stack = look.stack;
+      p.slots = look.slots;
+      p.unlocked = look.unlocked;
     },
     // The client's handlers are registered: answer with its base (`seat`) and progress /
     // noProgress / serverError, then `daily` and `leaderboard`. Anything the server sends from
@@ -164,6 +199,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     p.username = sanitizeName(options?.username);
     p.pfp = sanitizePfp(options?.pfp);
     this.state.players.set(client.sessionId, p);
+    this.poseGates.set(client.sessionId, new RateGate(POSE_MIN_INTERVAL_MS));
+    this.lookGates.set(client.sessionId, new RateGate(LOOK_MIN_INTERVAL_MS));
     // Identity only: the answer (seat, progress...) goes out on the client's `sync`. A signed-in
     // account that is already here (a reload, a reconnect the old connection hasn't timed out
     // yet) takes over that session's base, so reloading never moves a player's base.
@@ -211,6 +248,8 @@ export class WorldRoom extends Room<{ state: WorldState }> {
     this.loaded.delete(sessionId);
     this.verified.delete(sessionId);
     this.dailies.delete(sessionId);
+    this.poseGates.delete(sessionId);
+    this.lookGates.delete(sessionId);
   }
 
   // Stores a session's Daily Rewards clock (and, when the streak restarted, clears the milestones
