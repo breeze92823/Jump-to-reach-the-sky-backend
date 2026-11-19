@@ -71,3 +71,16 @@ export const LEADERBOARDS = [
 export const LEADERBOARD_REPORT_EVERY_MS = 15 * 1000; // docs: batch every 10-30 s
 export const REPORT_BATCH_MAX = 200; // scores per report call
 export const SCORE_MAX = Number.MAX_SAFE_INTEGER; // Jump Power / money pass this late game; reports are capped
+
+// Presence (presence.ts): what other players in the room see of each other. The client sends a
+// `pose` ~10 times a second and a `look` when its outfit / back item / carried stack / base slots
+// change; the server bounds both and relays them through the roster (PlayerState).
+export const POSE_MIN_INTERVAL_MS = 40; // poses sent faster than this (~25/s) are dropped
+export const LOOK_MIN_INTERVAL_MS = 200; // looks are rare; a burst of them is dropped
+export const POSE_XZ_MAX = 1000; // m: the hub is 140 x 110, the lane runs north from it
+export const POSE_Y_MIN = -100;
+export const POSE_Y_MAX = 20_000; // the lane climbs high with late-game Jump Power
+export const POSE_SPEED_MAX = 150; // m/s horizontal (a Skip Wall flight is the fastest thing)
+export const OUTFIT_MAX = 256; // Bloxity outfit key (an id / key, never a URL), characters
+export const STACK_SHOWN_MAX = 6; // carried brainrots other players see (the client's Carry upgrade is 5)
+export const BASE_SHOWN_MAX = 12; // base pedestals other players see (client ECONOMY.slots.total)
