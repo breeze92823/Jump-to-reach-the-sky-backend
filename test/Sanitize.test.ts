@@ -1,6 +1,6 @@
 import assert from "assert";
 
-import { CARRY_MAX, NUMBER_MAX, SLOTS_MAX } from "../src/constants.js";
+import { ASCENDED_LEVEL_MAX, BASE_BUILD_MS_MAX, CARRY_MAX, FUSION_MS_MAX, ZONES_MAX, LUCKY_BLOCKS_MAX, NUMBER_MAX, SLOTS_MAX } from "../src/constants.js";
 import { sanitizeProgress } from "../src/sanitize.js";
 
 describe("sanitizeProgress", () => {
@@ -57,6 +57,46 @@ describe("sanitizeProgress", () => {
     assert.strictEqual(out.dailyPass, true);
     assert.deepStrictEqual(out.dailyMilestones, { 14: true });
     assert.strictEqual(sanitizeProgress({ items: { box: true }, equipped: "wings" })!.equipped, undefined);
+  });
+
+  it("keeps Lucky Block counts whole and bounded, and the crystal count", () => {
+    const out = sanitizeProgress({ luckyBlocks: { lucky: 3.9, super: -2, rainbow: 1e9, "Bad Id!": 4, junk: "x" }, crystals: 27.5 })!;
+    assert.deepStrictEqual(out.luckyBlocks, { lucky: 3, rainbow: LUCKY_BLOCKS_MAX });
+    assert.strictEqual(out.crystals, 27);
+    assert.strictEqual(sanitizeProgress({ crystals: "9" })!.crystals, undefined);
+    assert.deepStrictEqual(sanitizeProgress({ luckyBlocks: [1, 2] })!.luckyBlocks, {});
+  });
+
+  it("keeps a well-formed Fusion Machine job, clears it on null, and drops a malformed one", () => {
+    const at = Date.now() + 60_000;
+    const out = sanitizeProgress({ fusion: { species: "toastino", from: "normal", to: "golden", at, ms: 120_000, junk: 1 } })!;
+    assert.deepStrictEqual(out.fusion, { species: "toastino", from: "normal", to: "golden", at, ms: 120_000 });
+    assert.strictEqual(sanitizeProgress({ fusion: null })!.fusion, null);
+    assert.ok(!("fusion" in sanitizeProgress({ fusion: { species: "Bad Id!", from: "normal", to: "golden", at, ms: 1 } })!));
+    assert.ok(!("fusion" in sanitizeProgress({ fusion: "x" })!));
+    const far = sanitizeProgress({ fusion: { species: "toastino", from: "normal", to: "golden", at: 1e15, ms: 1e12 } })!.fusion!;
+    assert.strictEqual(far.ms, FUSION_MS_MAX);
+    assert.ok(far.at <= Date.now() + FUSION_MS_MAX);
+  });
+
+  it("keeps Ascended Shop perk levels whole and bounded", () => {
+    const out = sanitizeProgress({ ascended: { autoCollect: 1, mastery: 4.8, golden: 0, vault: 1e9, "Bad Id!": 2, magnet: "1" } })!;
+    assert.deepStrictEqual(out.ascended, { autoCollect: 1, mastery: 4, vault: ASCENDED_LEVEL_MAX });
+    assert.deepStrictEqual(sanitizeProgress({ ascended: null })!.ascended, {});
+  });
+
+  it("bounds the Base Level and its build, clearing the build on null", () => {
+    const at = Date.now() + 60_000;
+    const out = sanitizeProgress({ baseLevel: 3.6, baseBuild: { level: 4, at, ms: 240_000, junk: 1 } })!;
+    assert.strictEqual(out.baseLevel, 3);
+    assert.deepStrictEqual(out.baseBuild, { level: 4, at, ms: 240_000 });
+    assert.strictEqual(sanitizeProgress({ baseBuild: null })!.baseBuild, null);
+    assert.ok(!("baseBuild" in sanitizeProgress({ baseBuild: { level: "4", at, ms: 1 } })!));
+    const far = sanitizeProgress({ baseLevel: 1e9, baseBuild: { level: 0, at: 1e15, ms: 1e12 } })!;
+    assert.strictEqual(far.baseLevel, ZONES_MAX);
+    assert.strictEqual(far.baseBuild!.level, 1);
+    assert.strictEqual(far.baseBuild!.ms, BASE_BUILD_MS_MAX);
+    assert.ok(far.baseBuild!.at <= Date.now() + BASE_BUILD_MS_MAX);
   });
 
   it("never lets a save write the daily clock", () => {
