@@ -37,6 +37,12 @@ export const SPECIES_MAX = 128;
 export const VARIANTS_MAX = 16;
 export const ITEMS_MAX = 128;
 export const FLAGS_MAX = 32; // perks, boosts, daily milestones: small id -> value maps
+export const LUCKY_TIERS_MAX = 8; // Lucky Block tiers (client LUCKY_BLOCKS.tiers)
+export const LUCKY_BLOCKS_MAX = 100_000; // unopened Lucky Blocks of one tier
+export const CRYSTALS_MAX = 1e12; // Jump Crystals picked up (free Lucky Block progress)
+export const FUSION_MS_MAX = 24 * 3_600_000; // longest Fusion Machine build (client FUSION.steps minutes)
+export const ASCENDED_LEVEL_MAX = 1000; // an Ascended Shop perk's level (client ASCENDED.perks max)
+export const BASE_BUILD_MS_MAX = 24 * 3_600_000; // longest Base Level build (client BASE_LEVELS minutes)
 
 // Daily Rewards (client DAILY in config.js): one claim per cooldown on the SERVER's clock; a gap
 // longer than the streak break restarts at Day 1. DAILY_CYCLE = the client's DAILY.days.length.

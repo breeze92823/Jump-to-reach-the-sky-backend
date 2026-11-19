@@ -1,8 +1,9 @@
 import {
   NUMBER_MAX, REBIRTHS_MAX, LEVEL_MAX, BOOST_SECONDS_MAX, SLOTS_MAX, PADS_MAX, ZONES_MAX, CARRY_MAX,
-  SPECIES_MAX, VARIANTS_MAX, ITEMS_MAX, FLAGS_MAX, ID_PATTERN,
+  SPECIES_MAX, VARIANTS_MAX, ITEMS_MAX, FLAGS_MAX, ID_PATTERN, LUCKY_TIERS_MAX, LUCKY_BLOCKS_MAX, CRYSTALS_MAX, FUSION_MS_MAX,
+  ASCENDED_LEVEL_MAX, BASE_BUILD_MS_MAX,
 } from "./constants.js";
-import type { PlayerDoc, SavedBrainrot } from "./db.js";
+import type { PlayerDoc, SavedBaseBuild, SavedBrainrot, SavedFusion } from "./db.js";
 
 export function finite(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
@@ -71,6 +72,34 @@ function sanitizeBoosts(raw: unknown): Record<string, number> {
   return out;
 }
 
+// The Fusion Machine job: ids, a length within FUSION_MS_MAX, a finish time no further out than
+// that from now. null = the machine is idle; anything malformed is dropped (field left as it was).
+function sanitizeFusion(raw: unknown): SavedFusion | null | undefined {
+  if (raw === null) return null;
+  if (!isObject(raw) || !isId(raw.species) || !isId(raw.from) || !isId(raw.to) || !finite(raw.at) || !finite(raw.ms)) return undefined;
+  const ms = clampInt(raw.ms, FUSION_MS_MAX);
+  return { species: raw.species, from: raw.from, to: raw.to, at: clampInt(raw.at, Date.now() + FUSION_MS_MAX), ms };
+}
+
+// A Base Level under construction: a level within ZONES_MAX, a length within BASE_BUILD_MS_MAX and a
+// finish time no further out than that from now. null = nothing building; malformed = ignored.
+function sanitizeBaseBuild(raw: unknown): SavedBaseBuild | null | undefined {
+  if (raw === null) return null;
+  if (!isObject(raw) || !finite(raw.level) || !finite(raw.at) || !finite(raw.ms)) return undefined;
+  return { level: clampInt(raw.level, ZONES_MAX, 1), at: clampInt(raw.at, Date.now() + BASE_BUILD_MS_MAX), ms: clampInt(raw.ms, BASE_BUILD_MS_MAX) };
+}
+
+// Unopened Lucky Blocks { tier: count }: slug ids, whole counts within bounds (zeros dropped).
+function sanitizeCounts(raw: unknown, maxKeys: number, maxCount: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!isObject(raw)) return out;
+  for (const [id, n] of Object.entries(raw)) {
+    if (Object.keys(out).length >= maxKeys) break;
+    if (isId(id) && finite(n) && n >= 1) out[id] = clampInt(n, maxCount);
+  }
+  return out;
+}
+
 // The Index { species: { variant: true } }: bounded species and variants per species.
 function sanitizeIndex(raw: unknown): Record<string, Record<string, boolean>> {
   const out: Record<string, Record<string, boolean>> = {};
@@ -113,6 +142,15 @@ export function sanitizeProgress(raw: unknown): Partial<PlayerDoc> | null {
   // Owned back items + the worn one, which must be owned (when this save carries the owned list).
   if (raw.items !== undefined) out.items = sanitizeFlagMap(raw.items, ITEMS_MAX);
   if (isId(raw.equipped) && (!out.items || out.items[raw.equipped])) out.equipped = raw.equipped;
+
+  if (raw.luckyBlocks !== undefined) out.luckyBlocks = sanitizeCounts(raw.luckyBlocks, LUCKY_TIERS_MAX, LUCKY_BLOCKS_MAX);
+  if (finite(raw.crystals)) out.crystals = clampInt(raw.crystals, CRYSTALS_MAX);
+  const fusion = sanitizeFusion(raw.fusion);
+  if (fusion !== undefined) out.fusion = fusion;
+  if (raw.ascended !== undefined) out.ascended = sanitizeCounts(raw.ascended, FLAGS_MAX, ASCENDED_LEVEL_MAX);
+  if (finite(raw.baseLevel)) out.baseLevel = clampInt(raw.baseLevel, ZONES_MAX);
+  const build = sanitizeBaseBuild(raw.baseBuild);
+  if (build !== undefined) out.baseBuild = build;
 
   if (typeof raw.dailyPass === "boolean") out.dailyPass = raw.dailyPass;
   if (raw.dailyMilestones !== undefined) out.dailyMilestones = sanitizeFlagMap(raw.dailyMilestones, FLAGS_MAX);

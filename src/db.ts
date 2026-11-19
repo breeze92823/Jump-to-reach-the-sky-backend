@@ -14,6 +14,23 @@ export interface SavedBrainrot {
   income?: number; // a reward brainrot's own base income
 }
 
+// A Base Level under construction: `level`, done at epoch ms `at` (client clock), `ms` long.
+export interface SavedBaseBuild {
+  level: number;
+  at: number;
+  ms: number;
+}
+
+// The Fusion Machine's job: `species` going from variant `from` to `to`, done at epoch ms `at`
+// (the client's clock; the game is client-authoritative), `ms` long in total.
+export interface SavedFusion {
+  species: string;
+  from: string;
+  to: string;
+  at: number;
+  ms: number;
+}
+
 // The persisted client state (what `saveProgress` carries, see sanitize.ts; client
 // src/game/state.js SAVED). The same document is the player's only save once signed in.
 export interface PlayerDoc {
@@ -38,6 +55,12 @@ export interface PlayerDoc {
   luckyJumps?: boolean;
   items?: Record<string, boolean>; // owned back items
   equipped?: string; // the worn back item (an owned one)
+  luckyBlocks?: Record<string, number>; // unopened Lucky Blocks by tier id
+  crystals?: number; // Jump Crystals picked up (every 10th gives a free Lucky Block)
+  fusion?: SavedFusion | null; // the Fusion Machine's running job
+  ascended?: Record<string, number>; // Ascended Shop perk id -> level bought
+  baseLevel?: number; // Base Level built (opens the lane walls)
+  baseBuild?: SavedBaseBuild | null; // the Base Level being built
   dailyPass?: boolean; // Claim All Pass bought
   dailyMilestones?: Record<string, boolean>; // streak day -> reward claimed
   lastSeen?: number; // epoch ms of the last save (offline income counts from it)
